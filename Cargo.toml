@@ -1,0 +1,14 @@
+[package]
+name = "kestrel"
+version = "0.1.0"
+authors = ["Cobrand <cobrandw@gmail.com>"]
+description = "Reliable & prioritized Udp Delivery"
+keywords = ["udp", "reliable udp", "network", "networking"]
+categories = ["network-programming"]
+
+[dependencies]
+bytes = "^0.4"
+crc = "^1.6"
+fnv = "^1.0"
+itertools = "^0.7"
+failure = "^0.1"
