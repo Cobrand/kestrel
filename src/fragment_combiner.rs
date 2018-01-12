@@ -1,12 +1,12 @@
 use fnv::FnvHashMap as HashMap;
 use std::collections::VecDeque;
 use itertools::Itertools;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use fragment::{Fragment, build_data_from_fragments};
 
 pub (crate) struct FragmentCombiner {
-    pending_fragments: HashMap<u32, HashMap<u8, Fragment<Rc<[u8]>>>>,
+    pending_fragments: HashMap<u32, HashMap<u8, Fragment<Arc<[u8]>>>>,
     out_messages: VecDeque<Box<[u8]>>,
 }
 
@@ -39,7 +39,7 @@ impl FragmentCombiner {
         self.out_messages.pop_front()
     }
 
-    pub fn push(&mut self, fragment: Fragment<Rc<[u8]>>) {
+    pub fn push(&mut self, fragment: Fragment<Arc<[u8]>>) {
         let seq_id = fragment.seq_id;
         let frag_total = fragment.frag_total;
 
@@ -66,14 +66,14 @@ impl FragmentCombiner {
 
 #[test]
 fn fragment_combiner_success() {
-    let fragments: Vec<Fragment<Rc<[u8]>>> = vec![
-        Fragment { seq_id: 3, frag_id: 1, frag_total: 2, data: Rc::new([0, 5]) },
-        Fragment { seq_id: 4, frag_id: 1, frag_total: 2, data: Rc::new([4, 0]) },
-        Fragment { seq_id: 7, frag_id: 0, frag_total: 0, data: Rc::new([64, 64]) },
-        Fragment { seq_id: 5, frag_id: 1, frag_total: 2, data: Rc::new([4, 5]) },
-        Fragment { seq_id: 5, frag_id: 0, frag_total: 2, data: Rc::new([1, 2, 3]) },
-        Fragment { seq_id: 5, frag_id: 2, frag_total: 2, data: Rc::new([6, 7, 8, 9]) },
-        Fragment { seq_id: 6, frag_id: 1, frag_total: 2, data: Rc::new([14, 5]) },
+    let fragments: Vec<Fragment<Arc<[u8]>>> = vec![
+        Fragment { seq_id: 3, frag_id: 1, frag_total: 2, data: Arc::new([0, 5]) },
+        Fragment { seq_id: 4, frag_id: 1, frag_total: 2, data: Arc::new([4, 0]) },
+        Fragment { seq_id: 7, frag_id: 0, frag_total: 0, data: Arc::new([64, 64]) },
+        Fragment { seq_id: 5, frag_id: 1, frag_total: 2, data: Arc::new([4, 5]) },
+        Fragment { seq_id: 5, frag_id: 0, frag_total: 2, data: Arc::new([1, 2, 3]) },
+        Fragment { seq_id: 5, frag_id: 2, frag_total: 2, data: Arc::new([6, 7, 8, 9]) },
+        Fragment { seq_id: 6, frag_id: 1, frag_total: 2, data: Arc::new([14, 5]) },
     ];
     let mut fragment_combiner = FragmentCombiner::new();
     for fragment in fragments {

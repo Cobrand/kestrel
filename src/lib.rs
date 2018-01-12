@@ -17,3 +17,4 @@ mod connection;
 mod fragment_combiner;
 mod fragment;
 mod udp_message;
+mod socket;

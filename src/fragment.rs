@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 use misc::ClonableIterator;
 use consts::*;
 use udp_message::*;
@@ -38,17 +38,17 @@ impl<'a> Fragment<&'a [u8]> {
         }
     }
     
-    pub fn into_rcd(self) -> Fragment<Rc<[u8]>> {
+    pub fn into_arc(self) -> Fragment<Arc<[u8]>> {
         Fragment {
             seq_id: self.seq_id,
             frag_id: self.frag_id,
             frag_total: self.frag_total,
-            data: Rc::from(self.data)
+            data: Arc::from(self.data)
         }
     }
 }
 
-impl Clone for Fragment<Rc<[u8]>> {
+impl Clone for Fragment<Arc<[u8]>> {
     fn clone(&self) -> Self {
         Fragment {
             seq_id: self.seq_id,
@@ -103,11 +103,11 @@ fn frag_udp_fail_invalid_crc() {
 /// returns an error if the message couldn't be restored properly: a frag_id is higher than frag_total,
 /// 2 frag_id are the same, ...
 pub (crate) fn build_data_from_fragments<'a, I>(fragments: I) -> Result<Box<[u8]>, ()> 
-where I: Iterator<Item = &'a Fragment<Rc<[u8]>>> + Clone
+where I: Iterator<Item = &'a Fragment<Arc<[u8]>>> + Clone
 {
     // start with vec!(None; n) and for every fragment, replace None by Some(...)
     // it does not matter if the original slice is out of order, this vec will be in order
-    let mut fragments_vec: Vec<Option<Fragment<Rc<[u8]>>>> = vec!(None; fragments.clone().count());
+    let mut fragments_vec: Vec<Option<Fragment<Arc<[u8]>>>> = vec!(None; fragments.clone().count());
     // track the size of all data chunks summed
     let mut total_data_size: usize = 0;
     for fragment in fragments {
@@ -133,10 +133,10 @@ where I: Iterator<Item = &'a Fragment<Rc<[u8]>>> + Clone
 
 #[test]
 fn build_data_from_fragments_success() {
-    let fragments: Vec<Fragment<Rc<[u8]>>> = vec![
-        Fragment { seq_id: 5, frag_id: 1, frag_total: 2, data: Rc::new([4, 5]) },
-        Fragment { seq_id: 5, frag_id: 0, frag_total: 2, data: Rc::new([1, 2, 3]) },
-        Fragment { seq_id: 5, frag_id: 2, frag_total: 2, data: Rc::new([6, 7, 8, 9]) },
+    let fragments: Vec<Fragment<Arc<[u8]>>> = vec![
+        Fragment { seq_id: 5, frag_id: 1, frag_total: 2, data: Arc::new([4, 5]) },
+        Fragment { seq_id: 5, frag_id: 0, frag_total: 2, data: Arc::new([1, 2, 3]) },
+        Fragment { seq_id: 5, frag_id: 2, frag_total: 2, data: Arc::new([6, 7, 8, 9]) },
     ];
 
     let message: Box<[u8]> = build_data_from_fragments(fragments.iter()).unwrap();
@@ -146,10 +146,10 @@ fn build_data_from_fragments_success() {
 #[test]
 #[should_panic]
 fn build_data_from_fragments_fail_wrong_frag_total() {
-    let fragments: Vec<Fragment<Rc<[u8]>>> = vec![
-        Fragment { seq_id: 5, frag_id: 1, frag_total: 3, data: Rc::new([4, 5]) },
-        Fragment { seq_id: 5, frag_id: 0, frag_total: 3, data: Rc::new([1, 2, 3]) },
-        Fragment { seq_id: 5, frag_id: 2, frag_total: 3, data: Rc::new([6, 7, 8, 9]) },
+    let fragments: Vec<Fragment<Arc<[u8]>>> = vec![
+        Fragment { seq_id: 5, frag_id: 1, frag_total: 3, data: Arc::new([4, 5]) },
+        Fragment { seq_id: 5, frag_id: 0, frag_total: 3, data: Arc::new([1, 2, 3]) },
+        Fragment { seq_id: 5, frag_id: 2, frag_total: 3, data: Arc::new([6, 7, 8, 9]) },
     ];
 
     build_data_from_fragments(fragments.iter()).unwrap();
@@ -157,9 +157,9 @@ fn build_data_from_fragments_fail_wrong_frag_total() {
 
 #[test]
 fn build_data_from_fragments_fail_wrong_frag_id() {
-    let fragments: Vec<Fragment<Rc<[u8]>>> = vec![
-        Fragment { seq_id: 5, frag_id: 0, frag_total: 1, data: Rc::new([1, 2, 3]) },
-        Fragment { seq_id: 5, frag_id: 5, frag_total: 1, data: Rc::new([6, 7, 8, 9]) },
+    let fragments: Vec<Fragment<Arc<[u8]>>> = vec![
+        Fragment { seq_id: 5, frag_id: 0, frag_total: 1, data: Arc::new([1, 2, 3]) },
+        Fragment { seq_id: 5, frag_id: 5, frag_total: 1, data: Arc::new([6, 7, 8, 9]) },
     ];
 
     let e = build_data_from_fragments(fragments.iter()).unwrap_err();
@@ -168,9 +168,9 @@ fn build_data_from_fragments_fail_wrong_frag_id() {
 
 #[test]
 fn build_data_from_fragments_fail_duplicate_frag_id() {
-    let fragments: Vec<Fragment<Rc<[u8]>>> = vec![
-        Fragment { seq_id: 5, frag_id: 0, frag_total: 1, data: Rc::new([1, 2, 3]) },
-        Fragment { seq_id: 5, frag_id: 0, frag_total: 1, data: Rc::new([6, 7, 8, 9]) },
+    let fragments: Vec<Fragment<Arc<[u8]>>> = vec![
+        Fragment { seq_id: 5, frag_id: 0, frag_total: 1, data: Arc::new([1, 2, 3]) },
+        Fragment { seq_id: 5, frag_id: 0, frag_total: 1, data: Arc::new([6, 7, 8, 9]) },
     ];
 
     let e = build_data_from_fragments(fragments.iter()).unwrap_err();
@@ -207,7 +207,7 @@ fn build_rebuild_data() {
     let seq_id: u32 = 1;
     let data = vec!(0; 1024);
     let frags_iter_boxed = build_fragments_from_data(&data, seq_id).unwrap();
-    let frags: Vec<Fragment<Rc<[u8]>>> = frags_iter_boxed.map(|f| f.into_rcd()).collect();
+    let frags: Vec<Fragment<Arc<[u8]>>> = frags_iter_boxed.map(|f| f.into_arc()).collect();
     let new_data = build_data_from_fragments(frags.iter()).unwrap();
     assert_eq!(new_data.len(), data.len());
 }
