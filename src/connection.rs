@@ -7,8 +7,7 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::net::{ToSocketAddrs, UdpSocket};
 use std::time::Duration;
 use std::ops::Deref;
-
-type RemoteID = ();
+use socket::RemoteID;
 
 #[derive(Debug)]
 pub enum ConnectionMainThreadFatalError {}
@@ -20,13 +19,7 @@ pub struct InMsg(pub RemoteID, pub Arc<[u8]>);
 pub type OutMsg = InMsg;
 
 #[derive(Debug)]
-pub struct Remote {
-    id: RemoteID
-}
-
-#[derive(Debug)]
 pub struct Connection {
-    
     should_stop: Arc<AtomicBool>,
     thread_handle: JoinHandle<Result<(), ConnectionMainThreadFatalError>>,
     incoming_msg_receiver: Receiver<InMsg>,
@@ -39,6 +32,7 @@ struct ConnectionMainThreadContext {
     pub out_msg_receiver: Receiver<OutMsg>,
     pub should_stop: Arc<AtomicBool>,
 }
+
 
 impl ConnectionMainThreadContext {
     fn start(self) -> Result<(), ConnectionMainThreadFatalError> {

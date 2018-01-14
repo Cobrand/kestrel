@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use fragment::{Fragment, build_data_from_fragments};
 
+#[derive(Debug)]
 pub (crate) struct FragmentCombiner {
     pending_fragments: HashMap<u32, HashMap<u8, Fragment<Arc<[u8]>>>>,
     out_messages: VecDeque<Box<[u8]>>,
@@ -35,8 +36,18 @@ impl FragmentCombiner {
         Ok(())
     }
 
-    fn next_out_message(&mut self) -> Option<Box<[u8]>> {
+    pub fn next_out_message(&mut self) -> Option<Box<[u8]>> {
         self.out_messages.pop_front()
+    }
+
+    /// Returns all the waiting out messages, and empties the internal queue
+    pub fn out_messages(&mut self) -> VecDeque<Box<[u8]>> {
+        let empty = VecDeque::default();
+        if self.out_messages.len() == 0 {
+            empty
+        } else {
+            ::std::mem::replace(&mut self.out_messages, empty)
+        }
     }
 
     pub fn push(&mut self, fragment: Fragment<Arc<[u8]>>) {

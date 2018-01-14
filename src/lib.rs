@@ -18,3 +18,6 @@ mod fragment_combiner;
 mod fragment;
 mod udp_message;
 mod socket;
+
+pub use connection::{Connection, ConnectionMainThreadFatalError, ConnectionRecvError};
+pub use socket::*;

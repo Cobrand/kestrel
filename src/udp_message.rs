@@ -1,4 +1,4 @@
-use bytes::{BytesMut, BufMut, ByteOrder, LittleEndian};
+use bytes::{BytesMut, BufMut, ByteOrder, BigEndian};
 use consts::*;
 use fragment::*;
 
@@ -26,12 +26,12 @@ impl<'a, T: AsRef<[u8]>> From<&'a Fragment<T>> for UdpMessage {
         let mut bytes_mut = BytesMut::with_capacity(CRC32_SIZE + FRAG_HEADER_SIZE + f.data.as_ref().len());
         // reserve 4 bytes for the crc32 later
         unsafe {bytes_mut.advance_mut(4)};
-        bytes_mut.put_u32::<LittleEndian>(f.seq_id);
+        bytes_mut.put_u32::<BigEndian>(f.seq_id);
         bytes_mut.put(f.frag_id);
         bytes_mut.put(f.frag_total);
         bytes_mut.put_slice(f.data.as_ref());
         let generated_crc: u32 = crc32_check(&bytes_mut[4..]);
-        LittleEndian::write_u32(&mut bytes_mut[0..4], generated_crc);
+        BigEndian::write_u32(&mut bytes_mut[0..4], generated_crc);
         UdpMessage {buffer: bytes_mut}
     }
 }
@@ -49,8 +49,8 @@ impl<'a> From<&'a [u8]> for UdpMessage {
 }
 
 impl UdpMessage {
-    /// Creates an allocated messagefor Udp Reading.
-    fn new() -> UdpMessage {
+    /// Creates an allocated message for Udp Reading.
+    pub fn new() -> UdpMessage {
         UdpMessage {buffer: BytesMut::with_capacity(MAX_UDP_MESSAGE_SIZE)}
     }
 
@@ -62,8 +62,8 @@ impl UdpMessage {
         if self.buffer.len() < 10 {
             return Err(UdpMessageError::NotBigEnough);
         }
-        let message_crc32: u32 = LittleEndian::read_u32(&self.buffer[0..4]);
-        let seq_id: u32 = LittleEndian::read_u32(&self.buffer[4..8]);
+        let message_crc32: u32 = BigEndian::read_u32(&self.buffer[0..4]);
+        let seq_id: u32 = BigEndian::read_u32(&self.buffer[4..8]);
         let frag_id: u8 = self.buffer[8];
         let frag_total: u8 = self.buffer[9];
         if frag_total >= 64 {
@@ -89,7 +89,11 @@ impl UdpMessage {
     /// Tries to build an independant fragment from a UdpMessage
     ///
     /// The content of the UdpMessage will be copied into a Box.
-    fn get_boxed_fragment(&self) -> Result<Fragment<Box<[u8]>>, UdpMessageError> {
+    pub fn get_boxed_fragment(&self) -> Result<Fragment<Box<[u8]>>, UdpMessageError> {
         self.get_fragment().map(Fragment::into_boxed)
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        self.buffer.as_ref()
     }
 }
