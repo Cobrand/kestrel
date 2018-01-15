@@ -1,12 +1,21 @@
-use bytes::{BytesMut, BufMut, ByteOrder, BigEndian};
+use byteorder::{BigEndian, ByteOrder};
 use consts::*;
 use fragment::*;
 
 use crc::crc32::checksum_ieee as crc32_check;
 
 #[derive(Debug)]
-pub struct UdpMessage {
-   buffer: BytesMut
+pub struct UdpMessage<B: AsRef<[u8]>> {
+   pub (self) buffer: B
+}
+
+/// UdpMessage **must** have a reference to a non-empty,
+/// at least `MAX_UDP_MESSAGE_SIZE` message mutable slice.
+///
+/// If the buffer doesn't have enough space, panic (assert) may happen
+/// in debug mode, while undefined behavior may happen in release mode
+pub struct UdpMessageMut<B: AsMut<[u8]> + AsRef<[u8]>> {
+    pub (self) buffer: B
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -21,37 +30,37 @@ pub enum UdpMessageError {
     FragTotalTooLarge,
 }
 
-impl<'a, T: AsRef<[u8]>> From<&'a Fragment<T>> for UdpMessage {
-    fn from(f: &'a Fragment<T>) -> UdpMessage {
-        let mut bytes_mut = BytesMut::with_capacity(CRC32_SIZE + FRAG_HEADER_SIZE + f.data.as_ref().len());
-        // reserve 4 bytes for the crc32 later
-        unsafe {bytes_mut.advance_mut(4)};
-        bytes_mut.put_u32::<BigEndian>(f.seq_id);
-        bytes_mut.put(f.frag_id);
-        bytes_mut.put(f.frag_total);
-        bytes_mut.put_slice(f.data.as_ref());
+impl<'a, T: AsRef<[u8]>> From<&'a Fragment<T>> for UdpMessage<Box<[u8]>> {
+    fn from(f: &'a Fragment<T>) -> UdpMessage<Box<[u8]>> {
+        let mut bytes_mut: Vec<u8> = vec!(0u8; CRC32_SIZE + FRAG_HEADER_SIZE + f.data.as_ref().len());
+        BigEndian::write_u32(&mut bytes_mut[4..8], f.seq_id);
+        // write frag_id and frag_total as u8s
+        bytes_mut[8] = f.frag_id;
+        bytes_mut[9] = f.frag_total;
+        (&mut bytes_mut[10..]).copy_from_slice(f.data.as_ref());
         let generated_crc: u32 = crc32_check(&bytes_mut[4..]);
         BigEndian::write_u32(&mut bytes_mut[0..4], generated_crc);
-        UdpMessage {buffer: bytes_mut}
+        UdpMessage {buffer: bytes_mut.into_boxed_slice()}
     }
 }
 
-/// Converts a slice into an UdpMessage. Copies the content
-///
-/// Note that the check is actually done at the *end* when a Fragment
-/// is about to be created
-impl<'a> From<&'a [u8]> for UdpMessage {
-    fn from(s: &'a [u8]) -> UdpMessage {
-        let mut bytes_mut = BytesMut::with_capacity(s.len());
-        bytes_mut.put_slice(s);
-        UdpMessage { buffer: bytes_mut }
-    }
-}
+// /// Converts a slice into an UdpMessage. Copies the content
+// ///
+// /// Note that the check is actually done at the *end* when a Fragment
+// /// is about to be created
+// impl<'a> From<&'a [u8]> for UdpMessage<Box<[u8]>> {
+//     fn from(s: &'a [u8]) -> UdpMessage<Box<[u8]>> {
+//         UdpMessage { buffer: 
+//         let mut bytes_mut = BytesMut::with_capacity(s.len());
+//         bytes_mut.put_slice(s);
+//         UdpMessage { buffer: bytes_mut }
+//     }
+// }
 
-impl UdpMessage {
+impl<B: AsRef<[u8]>> UdpMessage<B> {
     /// Creates an allocated message for Udp Reading.
-    pub fn new() -> UdpMessage {
-        UdpMessage {buffer: BytesMut::with_capacity(MAX_UDP_MESSAGE_SIZE)}
+    pub fn new(buffer: B) -> UdpMessage<B> {
+        UdpMessage {buffer: buffer}
     }
 
     /// Tries to build a Fragment from a UdpMessage.
@@ -59,17 +68,18 @@ impl UdpMessage {
     /// There are no copies involved, so the Fragment has a lifetime that depends
     /// on the UdpMessage. To have Boxed data, use `get_boxed_fragment`
     pub fn get_fragment<'a>(&'a self) -> Result<Fragment<&'a [u8]>, UdpMessageError> {
-        if self.buffer.len() < 10 {
+        let buffer = self.buffer.as_ref();
+        if buffer.len() < 10 {
             return Err(UdpMessageError::NotBigEnough);
         }
-        let message_crc32: u32 = BigEndian::read_u32(&self.buffer[0..4]);
-        let seq_id: u32 = BigEndian::read_u32(&self.buffer[4..8]);
-        let frag_id: u8 = self.buffer[8];
-        let frag_total: u8 = self.buffer[9];
+        let message_crc32: u32 = BigEndian::read_u32(&buffer[0..4]);
+        let seq_id: u32 = BigEndian::read_u32(&buffer[4..8]);
+        let frag_id: u8 = buffer[8];
+        let frag_total: u8 = buffer[9];
         if frag_total >= 64 {
             return Err(UdpMessageError::FragTotalTooLarge)
         }
-        let computed_crc32 = crc32_check(&self.buffer[4..]);
+        let computed_crc32 = crc32_check(&buffer[4..]);
         if computed_crc32 != message_crc32 {
             return Err(UdpMessageError::InvalidCrc)
         }
@@ -82,7 +92,7 @@ impl UdpMessage {
             seq_id,
             frag_id,
             frag_total,
-            data: &self.buffer[10..]
+            data: &buffer[10..]
         })
     }
 

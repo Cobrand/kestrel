@@ -6,7 +6,7 @@ extern crate fnv;
 extern crate itertools;
 
 extern crate crc;
-extern crate bytes;
+extern crate byteorder;
 
 #[macro_use]
 extern crate failure;

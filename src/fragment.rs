@@ -67,7 +67,7 @@ fn frag_udp_success_conversions() {
         frag_total: 0,
         data: &[1u8,2,3,4]
     };
-    let udp_message: UdpMessage = UdpMessage::from(&sent_fragment);
+    let udp_message: UdpMessage<_> = UdpMessage::from(&sent_fragment);
 
     let received_fragment = udp_message.get_fragment().unwrap();
 
@@ -80,7 +80,7 @@ fn frag_udp_success_conversions() {
 #[test]
 fn frag_udp_fail_not_big_enough() {
     let received_message: &'static [u8] = &[0u8, 0u8, 0u8, 0u8, 1u8, 2u8, 5u8];
-    let received_fragment = UdpMessage::from(received_message);
+    let received_fragment = UdpMessage::new(received_message);
     let e = received_fragment.get_fragment().unwrap_err();
     assert_eq!(e, UdpMessageError::NotBigEnough);
 }
@@ -88,7 +88,7 @@ fn frag_udp_fail_not_big_enough() {
 #[test]
 fn frag_udp_fail_invalid_crc() {
     let received_message: &'static [u8] = &[0; 20];
-    let received_fragment = UdpMessage::from(received_message);
+    let received_fragment = UdpMessage::new(received_message);
     let e = received_fragment.get_fragment().unwrap_err();
     assert_eq!(e, UdpMessageError::InvalidCrc);
 }

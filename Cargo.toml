@@ -7,7 +7,7 @@ keywords = ["udp", "reliable udp", "network", "networking"]
 categories = ["network-programming"]
 
 [dependencies]
-bytes = "^0.4"
+byteorder = "^1.2"
 crc = "^1.6"
 fnv = "^1.0"
 itertools = "^0.7"
