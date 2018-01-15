@@ -7,6 +7,10 @@ use failure::Fail;
 use std::ops::Deref;
 use std::collections::VecDeque;
 
+use std::io::{Error, ErrorKind};
+
+use consts::*;
+use misc::*;
 use udp_message::*;
 use fragment::*;
 use fragment_combiner::*;
@@ -50,6 +54,15 @@ struct Remote {
     pub (self) status: Cell<RemoteStatus>,
     pub (self) next_seq_id: Cell<u32>,
     pub (self) fragment_combiner: UnsafeCell<FragmentCombiner>,
+}
+
+impl Remote {
+    pub fn push_udp_message(&self, udp_message: UdpMessage<Box<[u8]>>) {
+        unsafe {
+            let mut fragment_combiner = &mut *self.fragment_combiner.get();
+            unimplemented!()
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -105,6 +118,7 @@ impl From<::std::io::Error> for SocketError {
 
 impl<'s> Socket<'s> {
     pub fn new(udp_socket: &'s UdpSocket) -> Socket<'s> {
+        udp_socket.set_nonblocking(true).unwrap();
         Socket {
             next_remote_id: 0,
             udp_socket,
@@ -135,7 +149,32 @@ impl<'s> Socket<'s> {
     }
 
     pub fn prepare_iteration(&mut self) {
-        // TODO
+        let mut done = false;
+        while !done {
+            match UdpMessage::<Box<[u8]>>::from_udp_socket(&self.udp_socket) {
+                Ok((udp_message, socket_addr)) => {
+                    let remote = self.remotes_by_addr.get(&socket_addr);
+                    match remote {
+                        None => {
+                            // maybe it's someone who tries to connect? Let's try to make contact
+                            unimplemented!()
+                        },
+                        Some(ref remote) => {
+                            // remote is valid, let's push the message into this remote
+                            unimplemented!()
+                        }
+                    }
+                },
+                Err(e) => {
+                    match e.kind() {
+                        ErrorKind::WouldBlock => {done = true},
+                        e => {
+                            panic!("Prepare iteration failed when receiving udp message: {:?}", e);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // TODO when impl Trait is done, replace VecDeque by impl Trait
@@ -148,7 +187,7 @@ impl<'s> Socket<'s> {
             let mut fragment_combiner = &mut *fragment_combiner_ptr;
             fragment_combiner.out_messages()
         };
-        unimplemented!()
+        Ok(messages)
     }
 
     pub fn send_message(&mut self, remote_id: RemoteID, message: &[u8], t: MessageType, priority: i8) -> Result<(), SocketError> {

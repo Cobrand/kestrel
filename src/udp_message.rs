@@ -1,21 +1,13 @@
 use byteorder::{BigEndian, ByteOrder};
 use consts::*;
 use fragment::*;
+use misc::*;
 
 use crc::crc32::checksum_ieee as crc32_check;
 
 #[derive(Debug)]
-pub struct UdpMessage<B: AsRef<[u8]>> {
+pub (crate) struct UdpMessage<B: AsRef<[u8]>> {
    pub (self) buffer: B
-}
-
-/// UdpMessage **must** have a reference to a non-empty,
-/// at least `MAX_UDP_MESSAGE_SIZE` message mutable slice.
-///
-/// If the buffer doesn't have enough space, panic (assert) may happen
-/// in debug mode, while undefined behavior may happen in release mode
-pub struct UdpMessageMut<B: AsMut<[u8]> + AsRef<[u8]>> {
-    pub (self) buffer: B
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -44,31 +36,9 @@ impl<'a, T: AsRef<[u8]>> From<&'a Fragment<T>> for UdpMessage<Box<[u8]>> {
     }
 }
 
-// /// Converts a slice into an UdpMessage. Copies the content
-// ///
-// /// Note that the check is actually done at the *end* when a Fragment
-// /// is about to be created
-// impl<'a> From<&'a [u8]> for UdpMessage<Box<[u8]>> {
-//     fn from(s: &'a [u8]) -> UdpMessage<Box<[u8]>> {
-//         UdpMessage { buffer: 
-//         let mut bytes_mut = BytesMut::with_capacity(s.len());
-//         bytes_mut.put_slice(s);
-//         UdpMessage { buffer: bytes_mut }
-//     }
-// }
-
 impl<B: AsRef<[u8]>> UdpMessage<B> {
-    /// Creates an allocated message for Udp Reading.
-    pub fn new(buffer: B) -> UdpMessage<B> {
-        UdpMessage {buffer: buffer}
-    }
-
-    /// Tries to build a Fragment from a UdpMessage.
-    ///
-    /// There are no copies involved, so the Fragment has a lifetime that depends
-    /// on the UdpMessage. To have Boxed data, use `get_boxed_fragment`
-    pub fn get_fragment<'a>(&'a self) -> Result<Fragment<&'a [u8]>, UdpMessageError> {
-        let buffer = self.buffer.as_ref();
+    fn check_header(udp_message: &[u8]) -> Result<(u32, u8, u8), UdpMessageError> {
+        let buffer = udp_message;
         if buffer.len() < 10 {
             return Err(UdpMessageError::NotBigEnough);
         }
@@ -88,22 +58,57 @@ impl<B: AsRef<[u8]>> UdpMessage<B> {
         if frag_id > frag_total {
             return Err(UdpMessageError::InvalidFragInfo)
         }
+        Ok((seq_id, frag_id, frag_total))
+    }
+
+    pub (crate) fn new(b: B) -> UdpMessage<B>{
+        UdpMessage {buffer: b}
+    }
+
+    /// Reads one message from a udp socket and returns its content as a UdpMessage
+    ///
+    /// Proper parameters that you see fit must have been set on UdpSocket. For instance,
+    /// it may be wise to set this udp socket as non-blocking  if you don't want to block
+    /// your thread forever trying to read one message.
+    pub fn from_udp_socket(udp_socket: &::std::net::UdpSocket) -> ::std::io::Result<(UdpMessage<Box<[u8]>>, ::std::net::SocketAddr)> {
+        let mut buffer = vec!(0; MAX_UDP_MESSAGE_SIZE);
+        let (message_size, socket_addr) = udp_socket.recv_from(buffer.as_mut_slice())?;
+        buffer.truncate(message_size);
+        let udp_message = UdpMessage {buffer: buffer.into_boxed_slice()};
+        Ok((udp_message, socket_addr))
+    }
+
+    /// useful for debug purposes
+    pub (crate) fn as_bytes(&self) -> &[u8] {
+        self.buffer.as_ref()
+    }
+    
+}
+    
+impl<'a> UdpMessage<&'a [u8]> {
+    pub (crate) fn into_fragment(self) -> Result<Fragment<&'a [u8]>, UdpMessageError> {
+        let (seq_id, frag_id, frag_total) = Self::check_header(self.buffer.as_ref())?;
         Ok(Fragment {
             seq_id,
             frag_id,
             frag_total,
-            data: &buffer[10..]
+            data: &self.buffer[10..]
         })
     }
+}
 
-    /// Tries to build an independant fragment from a UdpMessage
+impl UdpMessage<Box<[u8]>> {
+
+    /// Tries to build a Fragment from a UdpMessage.
     ///
-    /// The content of the UdpMessage will be copied into a Box.
-    pub fn get_boxed_fragment(&self) -> Result<Fragment<Box<[u8]>>, UdpMessageError> {
-        self.get_fragment().map(Fragment::into_boxed)
-    }
-
-    pub fn as_bytes(&self) -> &[u8] {
-        self.buffer.as_ref()
+    ///  No copies of data are involved
+    pub (crate) fn into_fragment(self) -> Result<Fragment<StrippedBoxedSlice<u8>>, UdpMessageError> {
+        let (seq_id, frag_id, frag_total) = Self::check_header(self.buffer.as_ref())?;
+        Ok(Fragment {
+            seq_id,
+            frag_id,
+            frag_total,
+            data: StrippedBoxedSlice::new(self.buffer, 10usize)
+        })
     }
 }

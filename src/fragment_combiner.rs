@@ -1,13 +1,12 @@
 use fnv::FnvHashMap as HashMap;
 use std::collections::VecDeque;
 use itertools::Itertools;
-use std::sync::Arc;
 
 use fragment::{Fragment, build_data_from_fragments};
 
 #[derive(Debug)]
 pub (crate) struct FragmentCombiner {
-    pending_fragments: HashMap<u32, HashMap<u8, Fragment<Arc<[u8]>>>>,
+    pending_fragments: HashMap<u32, HashMap<u8, Fragment<Box<[u8]>>>>,
     out_messages: VecDeque<Box<[u8]>>,
 }
 
@@ -28,10 +27,11 @@ impl FragmentCombiner {
     fn transform_message(&mut self, seq_id: u32) -> Result<(), ()> {
         let fragments = self.pending_fragments.remove(&seq_id).unwrap();
         if !fragments.values().map(|f| f.frag_total).all_equal() {
-            // all the fragments don't have the same frag_total
+            // some fragments don't have the same frag_total
             return Err(());
         }
-        let message = build_data_from_fragments(fragments.values())?;
+        // build_data_from_fragments with an IntoIterator with just the values
+        let message = build_data_from_fragments(fragments.into_iter().map(|(_k, v)| v))?;
         self.out_messages.push_back(message);
         Ok(())
     }
@@ -50,7 +50,7 @@ impl FragmentCombiner {
         }
     }
 
-    pub fn push(&mut self, fragment: Fragment<Arc<[u8]>>) {
+    pub fn push(&mut self, fragment: Fragment<Box<[u8]>>) {
         let seq_id = fragment.seq_id;
         let frag_total = fragment.frag_total;
 
@@ -59,7 +59,7 @@ impl FragmentCombiner {
             let seq_hash_map = entry.or_insert_with(|| HashMap::with_capacity_and_hasher(frag_total as usize, Default::default()));
             // if the seq_id/frag_id combo already existed, override it. It can happen when the sender re-sends a packet we've already received
             // because it didn't receive the ack on time.
-            seq_hash_map.insert(fragment.frag_id, fragment.clone());
+            seq_hash_map.insert(fragment.frag_id, fragment);
             if seq_hash_map.len() == frag_total as usize + 1 {
                 true
                 // try to transform fragments into a message, because we have enough of them here
@@ -77,14 +77,14 @@ impl FragmentCombiner {
 
 #[test]
 fn fragment_combiner_success() {
-    let fragments: Vec<Fragment<Arc<[u8]>>> = vec![
-        Fragment { seq_id: 3, frag_id: 1, frag_total: 2, data: Arc::new([0, 5]) },
-        Fragment { seq_id: 4, frag_id: 1, frag_total: 2, data: Arc::new([4, 0]) },
-        Fragment { seq_id: 7, frag_id: 0, frag_total: 0, data: Arc::new([64, 64]) },
-        Fragment { seq_id: 5, frag_id: 1, frag_total: 2, data: Arc::new([4, 5]) },
-        Fragment { seq_id: 5, frag_id: 0, frag_total: 2, data: Arc::new([1, 2, 3]) },
-        Fragment { seq_id: 5, frag_id: 2, frag_total: 2, data: Arc::new([6, 7, 8, 9]) },
-        Fragment { seq_id: 6, frag_id: 1, frag_total: 2, data: Arc::new([14, 5]) },
+    let fragments: Vec<Fragment<Box<[u8]>>> = vec![
+        Fragment { seq_id: 3, frag_id: 1, frag_total: 2, data: Box::new([0, 5]) },
+        Fragment { seq_id: 4, frag_id: 1, frag_total: 2, data: Box::new([4, 0]) },
+        Fragment { seq_id: 7, frag_id: 0, frag_total: 0, data: Box::new([64, 64]) },
+        Fragment { seq_id: 5, frag_id: 1, frag_total: 2, data: Box::new([4, 5]) },
+        Fragment { seq_id: 5, frag_id: 0, frag_total: 2, data: Box::new([1, 2, 3]) },
+        Fragment { seq_id: 5, frag_id: 2, frag_total: 2, data: Box::new([6, 7, 8, 9]) },
+        Fragment { seq_id: 6, frag_id: 1, frag_total: 2, data: Box::new([14, 5]) },
     ];
     let mut fragment_combiner = FragmentCombiner::new();
     for fragment in fragments {
