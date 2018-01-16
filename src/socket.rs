@@ -41,7 +41,7 @@ pub enum RemoteStatus {
 }
 
 impl Default for RemoteStatus {
-    /// A remote's default status is Disconnected
+    /// A remote's default status is NotStarted
     fn default() -> Self {
         RemoteStatus::NotStarted
     }
@@ -82,13 +82,6 @@ impl Remote {
     }
 }
 
-#[derive(Debug)]
-pub struct Socket<'s> {
-    next_remote_id: RemoteID,
-    udp_socket: &'s UdpSocket,
-    remotes: HashMap<RemoteID, Rc<Remote>>,
-    remotes_by_addr: HashMap<SocketAddr, Rc<Remote>>,
-}
 
 #[derive(Debug, Copy, Clone)] 
 pub enum MessageType {
@@ -133,8 +126,16 @@ impl From<::std::io::Error> for SocketError {
     }
 }
 
-impl<'s> Socket<'s> {
-    pub fn new(udp_socket: &'s UdpSocket) -> Socket<'s> {
+#[derive(Debug)]
+pub struct Socket {
+    next_remote_id: RemoteID,
+    udp_socket: UdpSocket,
+    remotes: HashMap<RemoteID, Rc<Remote>>,
+    remotes_by_addr: HashMap<SocketAddr, Rc<Remote>>,
+}
+
+impl Socket {
+    pub fn new(udp_socket: UdpSocket) -> Socket {
         udp_socket.set_nonblocking(true).unwrap();
         Socket {
             next_remote_id: 0,
@@ -196,10 +197,27 @@ impl<'s> Socket<'s> {
 
     // TODO when impl Trait is done, replace VecDeque by impl Trait
     /// Returns all received messages for a remote_id. The messages are in the order they *arrived*,
-    /// but it may be different fro mthe order the messages were *sent* from remote.
+    /// but it may be different from the order the messages were *sent* from remote.
+    ///
+    /// You *must* call `prepare_iteration` right before calling this function if you want to receive the messages
+    /// properly; otherwise incoming messages will be kept in the queue and you will have no way to have access
+    /// to the new messages.
     pub fn receive_all_messages_from(&mut self, remote_id: RemoteID) -> Result<VecDeque<Box<[u8]>>, SocketError> {
         let remote = self.remotes.get(&remote_id).ok_or(SocketError::InvalidRemoteId(remote_id))?;
         Ok(remote.extract_out_messages())
+    }
+
+    /// Returns all received messages from all remotes
+    ///
+    /// You don't have to call `prepare_iteration`, it is automatically being done here.
+    pub fn receive_all_messages(&mut self) -> Vec<(RemoteID, VecDeque<Box<[u8]>>)> {
+        self.prepare_iteration();
+        self.remotes
+            .iter()
+            .map(|(remote_id, remote)| {
+                (*remote_id, remote.extract_out_messages())
+            })
+            .collect()
     }
 
     pub fn send_message(&mut self, remote_id: RemoteID, message: &[u8], t: MessageType, priority: i8) -> Result<(), SocketError> {
@@ -209,7 +227,6 @@ impl<'s> Socket<'s> {
         for fragment in fragments {
             let udp_message = UdpMessage::from(&fragment);
             // TODO remove unwrap
-            println!("sending {} bytes to {:?}", udp_message.as_bytes().len(), remote.remote_socket_addr);
             let _r = self.udp_socket.send_to(udp_message.as_bytes(), remote.remote_socket_addr).unwrap();
             // TODO log the error if any
         }

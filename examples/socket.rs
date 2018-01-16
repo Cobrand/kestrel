@@ -7,9 +7,9 @@ fn main() {
     let poll_interval = Duration::from_millis(50);
 
     let udp_socket1 = UdpSocket::bind("0.0.0.0:50823").unwrap();
-    let mut socket1 = k::Socket::new(&udp_socket1);
+    let mut socket1 = k::Socket::new(udp_socket1);
     let udp_socket2 = UdpSocket::bind("0.0.0.0:50824").unwrap();
-    let mut socket2 = k::Socket::new(&udp_socket2);
+    let mut socket2 = k::Socket::new(udp_socket2);
     let socket1_remote_id = socket1.try_connect("127.0.0.1:50824").unwrap();
     let socket2_remote_id = socket2.try_connect("127.0.0.1:50823").unwrap();
     let buf = vec!(0u8; 1);
