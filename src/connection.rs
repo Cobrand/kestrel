@@ -37,8 +37,10 @@ struct ConnectionMainThreadContext {
 impl ConnectionMainThreadContext {
     fn start(self) -> Result<(), ConnectionMainThreadFatalError> {
         let poll_interval = Duration::from_millis(10);
-        while !self.should_stop.deref().load(Ordering::Relaxed) {
-            // do stuff
+        let should_stop = self.should_stop.load(Ordering::Relaxed);
+
+        while !should_stop {
+            
 
             ::std::thread::sleep(poll_interval);
         }

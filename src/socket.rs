@@ -53,14 +53,31 @@ struct Remote {
     pub (self) remote_socket_addr: SocketAddr,
     pub (self) status: Cell<RemoteStatus>,
     pub (self) next_seq_id: Cell<u32>,
-    pub (self) fragment_combiner: UnsafeCell<FragmentCombiner>,
+    fragment_combiner: UnsafeCell<FragmentCombiner<StrippedBoxedSlice<u8>>>,
 }
 
 impl Remote {
     pub fn push_udp_message(&self, udp_message: UdpMessage<Box<[u8]>>) {
         unsafe {
-            let mut fragment_combiner = &mut *self.fragment_combiner.get();
-            unimplemented!()
+            let ref mut fragment_combiner = *self.fragment_combiner.get();
+            match udp_message.into_fragment() {
+                Ok(fragment) => {
+                    fragment_combiner.push(fragment);
+                },
+                Err(_) => {
+                    // TODO handle the error
+                    // maybe log something?
+                }
+            }
+        }
+    }
+
+    /// calls FragmentCombiner::extract_out_messages
+    pub fn extract_out_messages(&self) -> VecDeque<Box<[u8]>> {
+        unsafe {
+            let fragment_combiner_ptr = self.fragment_combiner.get();
+            let ref mut fragment_combiner = *fragment_combiner_ptr;
+            fragment_combiner.extract_out_messages()
         }
     }
 }
@@ -161,7 +178,7 @@ impl<'s> Socket<'s> {
                         },
                         Some(ref remote) => {
                             // remote is valid, let's push the message into this remote
-                            unimplemented!()
+                            remote.push_udp_message(udp_message);
                         }
                     }
                 },
@@ -182,12 +199,7 @@ impl<'s> Socket<'s> {
     /// but it may be different fro mthe order the messages were *sent* from remote.
     pub fn receive_all_messages_from(&mut self, remote_id: RemoteID) -> Result<VecDeque<Box<[u8]>>, SocketError> {
         let remote = self.remotes.get(&remote_id).ok_or(SocketError::InvalidRemoteId(remote_id))?;
-        let messages = unsafe {
-            let fragment_combiner_ptr = remote.fragment_combiner.get();
-            let mut fragment_combiner = &mut *fragment_combiner_ptr;
-            fragment_combiner.out_messages()
-        };
-        Ok(messages)
+        Ok(remote.extract_out_messages())
     }
 
     pub fn send_message(&mut self, remote_id: RemoteID, message: &[u8], t: MessageType, priority: i8) -> Result<(), SocketError> {

@@ -5,12 +5,12 @@ use itertools::Itertools;
 use fragment::{Fragment, build_data_from_fragments};
 
 #[derive(Debug)]
-pub (crate) struct FragmentCombiner {
-    pending_fragments: HashMap<u32, HashMap<u8, Fragment<Box<[u8]>>>>,
+pub (crate) struct FragmentCombiner<B: AsRef<[u8]> + 'static> {
+    pending_fragments: HashMap<u32, HashMap<u8, Fragment<B>>>,
     out_messages: VecDeque<Box<[u8]>>,
 }
 
-impl FragmentCombiner {
+impl<B: AsRef<[u8]> + 'static> FragmentCombiner<B> {
     pub fn new() -> Self {
         FragmentCombiner {
             pending_fragments: HashMap::default(),
@@ -41,7 +41,7 @@ impl FragmentCombiner {
     }
 
     /// Returns all the waiting out messages, and empties the internal queue
-    pub fn out_messages(&mut self) -> VecDeque<Box<[u8]>> {
+    pub fn extract_out_messages(&mut self) -> VecDeque<Box<[u8]>> {
         let empty = VecDeque::default();
         if self.out_messages.len() == 0 {
             empty
@@ -50,19 +50,30 @@ impl FragmentCombiner {
         }
     }
 
-    pub fn push(&mut self, fragment: Fragment<Box<[u8]>>) {
+    /// Push a fragment into the internal queue.
+    ///
+    /// If the fragment is the last to arrive
+    pub fn push(&mut self, fragment: Fragment<B>) {
         let seq_id = fragment.seq_id;
         let frag_total = fragment.frag_total;
 
         let try_transform = { 
             let entry = self.pending_fragments.entry(seq_id);
+
+            // if the hashmap doesn't exist, create an empty one
             let seq_hash_map = entry.or_insert_with(|| HashMap::with_capacity_and_hasher(frag_total as usize, Default::default()));
+
             // if the seq_id/frag_id combo already existed, override it. It can happen when the sender re-sends a packet we've already received
             // because it didn't receive the ack on time.
             seq_hash_map.insert(fragment.frag_id, fragment);
             if seq_hash_map.len() == frag_total as usize + 1 {
                 true
                 // try to transform fragments into a message, because we have enough of them here
+            } else if seq_hash_map.len() > frag_total as usize + 1 {
+                // there are too many messages! This can only happen when a packet "lied" about its frag_total.
+                // If we try to re-build the message here, we will get an error because all of the fragments
+                // don't have the same frag_total
+                true
             } else {
                 false
             }

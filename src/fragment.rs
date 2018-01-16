@@ -83,12 +83,13 @@ fn frag_udp_fail_invalid_crc() {
 ///
 /// returns an error if the message couldn't be restored properly: a frag_id is higher than frag_total,
 /// 2 frag_id are the same, ...
-pub (crate) fn build_data_from_fragments<I>(fragments: I) -> Result<Box<[u8]>, ()> 
-where I: Iterator<Item = Fragment<Box<[u8]>>> + ExactSizeIterator {
+pub (crate) fn build_data_from_fragments<I, B>(fragments: I) -> Result<Box<[u8]>, ()> 
+where   B: AsRef<[u8]> + 'static,
+        I: Iterator<Item = Fragment<B>> + ExactSizeIterator {
     // start with vec!(None; n) and for every fragment, replace None by Some(...)
     // it does not matter if the original slice is out of order, this vec will be in order
     // Note that we can't do `= vec!(None; fragments.len())` because Option<Fragment<_>> is not `Clone`
-    let mut fragments_vec: Vec<Option<Fragment<Box<[u8]>>>> = (0..fragments.len()).map(|_| None).collect();
+    let mut fragments_vec: Vec<Option<Fragment<B>>> = (0..fragments.len()).map(|_| None).collect();
     // track the size of all data chunks summed
     let mut total_data_size: usize = 0;
     for fragment in fragments {
