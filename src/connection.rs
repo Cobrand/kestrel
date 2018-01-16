@@ -236,7 +236,7 @@ impl<O: AsRef<[u8]> + Sync + Send + 'static> Connection<O> {
 
 #[test]
 fn connection_init_destroy() {
-    let connection = Connection::new("0.0.0.0:0").unwrap();
+    let connection = Connection::<Box<[u8]>>::new("0.0.0.0:0").unwrap();
     ::std::thread::sleep(::std::time::Duration::from_millis(10));
     let _handle = connection.shutdown().unwrap();
 }
