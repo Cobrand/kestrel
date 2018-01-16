@@ -103,10 +103,8 @@ impl<O: AsRef<[u8]> + Sync + Send> ConnectionThreadContext<O> {
     }
 
     fn receive_incoming(&mut self) {
-        self.socket.prepare_iteration();
         'all_remotes: for (remote_id, remote_messages) in self.socket.receive_all_messages() {
             for message in remote_messages {
-                println!("received {:?} from {:?}", message, remote_id);
                 let r = self.in_data_sender.send(InData(remote_id.clone(), message));
 
                 if let Err(_) = r {
